@@ -200,7 +200,8 @@ export class GaugeExecutor extends Disposable {
         const workspaceFolder = workspace.getWorkspaceFolder(Uri.parse(project.root()));
         const launchConfigs = workspace.getConfiguration('launch', workspaceFolder).get<DebugConfiguration[]>('configurations');
         const option = {
-            ...extractGaugeRunOption(launchConfigs),
+            ...extractGaugeRunOption(launchConfigs,
+                this.gaugeWorkspace.getRunConfigurationSelector().getSelectedName(workspaceFolder)),
             failed: config.getFailed(),
             repeat: config.getRepeat(),
             parallel: config.getParallel(),

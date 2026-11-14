@@ -37,6 +37,7 @@ export enum GaugeVSCodeCommands {
     ExecuteInTerminal = "gauge.executeIn.terminal",
     CreateProject = "gauge.createProject",
     CreateSpecification = "gauge.create.specification",
+    SelectRunConfiguration = "gauge.execution.selectRunConfiguration",
 }
 
 export enum GaugeCommands {
@@ -87,6 +88,7 @@ export const GRADLE_COMMANDS = {
 }
 
 export const LAST_REPORT_PATH = 'gauge.execution.report';
+export const SELECTED_RUN_CONFIGURATIONS = 'gauge.execution.selectedRunConfigurations';
 export const COPY_TO_CLIPBOARD = 'Copy To Clipboard';
 export const NEW_FILE = 'New File';
 export const GAUGE_MANIFEST_FILE = 'manifest.json';

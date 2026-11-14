@@ -12,6 +12,7 @@ import GaugeConfig from './config/gaugeConfig';
 import { GaugeJavaProjectConfig } from './config/gaugeProjectConfig';
 import { GaugeCommandContext, GaugeRunners, setCommandContext } from "./constants";
 import { GaugeExecutor } from "./execution/gaugeExecutor";
+import { RunConfigurationSelector } from "./execution/runConfigurationSelector";
 import { SpecNodeProvider } from "./explorer/specExplorer";
 import { SpecificationProvider } from './file/specificationFileProvider';
 import { GaugeClients as GaugeProjectClientMap } from './gaugeClients';
@@ -30,6 +31,7 @@ const REFERENCE_CONFIG = 'reference';
 export class GaugeWorkspace extends Disposable {
     private readonly _fileProvider: SpecificationProvider;
     private _executor: GaugeExecutor;
+    private _runConfigurationSelector: RunConfigurationSelector;
     private _clientsMap: GaugeProjectClientMap;
     private _clientLanguageMap: Map<string, string> = new Map();
     private _outputChannel: OutputChannel = window.createOutputChannel('gauge');
@@ -42,6 +44,7 @@ export class GaugeWorkspace extends Disposable {
         super(() => this.dispose());
 
         this._clientsMap = clientsMap
+        this._runConfigurationSelector = new RunConfigurationSelector(state);
         this._executor = new GaugeExecutor(this, cli);
 
         if (workspace.workspaceFolders) {
@@ -65,6 +68,7 @@ export class GaugeWorkspace extends Disposable {
         this._disposable = Disposable.from(
             this._specNodeProvider,
             this._executor,
+            this._runConfigurationSelector,
             this._fileProvider,
             this.onConfigurationChange(),
             this.onEditorChange()
@@ -94,6 +98,10 @@ export class GaugeWorkspace extends Disposable {
 
     getGaugeExecutor(): GaugeExecutor {
         return this._executor;
+    }
+
+    getRunConfigurationSelector(): RunConfigurationSelector {
+        return this._runConfigurationSelector;
     }
 
     getClientsMap(): GaugeProjectClientMap {
