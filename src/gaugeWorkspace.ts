@@ -13,6 +13,7 @@ import { GaugeJavaProjectConfig } from './config/gaugeProjectConfig';
 import { GaugeCommandContext, GaugeRunners, setCommandContext } from "./constants";
 import { GaugeExecutor } from "./execution/gaugeExecutor";
 import { RunConfigurationSelector } from "./execution/runConfigurationSelector";
+import { GAUGE_DATA_DIR, resolveGaugeDataDir } from "./execution/gaugeEnvironment";
 import { SpecNodeProvider } from "./explorer/specExplorer";
 import { SpecificationProvider } from './file/specificationFileProvider';
 import { GaugeClients as GaugeProjectClientMap } from './gaugeClients';
@@ -32,6 +33,8 @@ export class GaugeWorkspace extends Disposable {
     private readonly _fileProvider: SpecificationProvider;
     private _executor: GaugeExecutor;
     private _runConfigurationSelector: RunConfigurationSelector;
+    private _languageServerDataDirs: Map<string, string | undefined> = new Map();
+    private _dataDirReloadPrompted = false;
     private _clientsMap: GaugeProjectClientMap;
     private _clientLanguageMap: Map<string, string> = new Map();
     private _outputChannel: OutputChannel = window.createOutputChannel('gauge');
@@ -71,8 +74,40 @@ export class GaugeWorkspace extends Disposable {
             this._runConfigurationSelector,
             this._fileProvider,
             this.onConfigurationChange(),
-            this.onEditorChange()
+            this.onEditorChange(),
+            this._runConfigurationSelector.onDidChange(() => this.onRunConfigurationChange())
         );
+    }
+
+    /**
+     * The language server has no --env option and always loads env/default. Pass the gauge_data_dir
+     * of the selected run configuration's environment instead, so tables (CodeLens, diagnostics)
+     * resolve like in `gauge run --env <env>`. Gauge keeps variables that are already set.
+     */
+    private languageServerDataDir(projectRoot: string): string | undefined {
+        if (process.env[GAUGE_DATA_DIR]) return undefined;
+        const folder = workspace.getWorkspaceFolder(Uri.file(projectRoot));
+        const config = this._runConfigurationSelector.getActiveConfiguration(folder);
+        return resolveGaugeDataDir(projectRoot, config && Array.isArray(config.env) ? config.env : undefined);
+    }
+
+    private onRunConfigurationChange() {
+        if (this._dataDirReloadPrompted) return;
+        for (const [root, started] of this._languageServerDataDirs) {
+            if (!this._clientsMap.has(root)) continue;
+            const wanted = this.languageServerDataDir(root);
+            if (wanted === started) continue;
+            this._dataDirReloadPrompted = true;
+            const action = 'Reload Window';
+            window.showInformationMessage(
+                `The selected Gauge run configuration uses ${GAUGE_DATA_DIR} '${wanted || 'from env/default'}'. ` +
+                'Reload the window so CodeLens and diagnostics use it?', action
+            ).then((selection) => {
+                this._dataDirReloadPrompted = false;
+                if (selection === action) commands.executeCommand('workbench.action.reloadWindow');
+            });
+            return;
+        }
     }
 
     private onEditorChange(): Disposable {
@@ -170,6 +205,12 @@ export class GaugeWorkspace extends Disposable {
             serverOptions.args.push("-l");
             serverOptions.args.push("debug");
         }
+        const dataDir = this.languageServerDataDir(project.root());
+        if (dataDir) {
+            serverOptions.options.env[GAUGE_DATA_DIR] = dataDir;
+            this._outputChannel.appendLine(`Starting language server with ${GAUGE_DATA_DIR}=${dataDir}`);
+        }
+        this._languageServerDataDirs.set(project.root(), dataDir);
         this._codeLensConfig = workspace.getConfiguration(GAUGE_CODELENS_CONFIG);
         if (this._codeLensConfig.has(REFERENCE_CONFIG) && !this._codeLensConfig.get(REFERENCE_CONFIG)) {
             serverOptions.options.env.gauge_lsp_reference_codelens = 'false';

@@ -1,8 +1,8 @@
 'use strict';
 
 import {
-    commands, DebugConfiguration, Disposable, QuickPickItem, StatusBarAlignment, StatusBarItem,
-    window, workspace, WorkspaceFolder
+    commands, DebugConfiguration, Disposable, Event, EventEmitter, QuickPickItem, StatusBarAlignment,
+    StatusBarItem, window, workspace, WorkspaceFolder
 } from 'vscode';
 import { GaugeVSCodeCommands } from '../constants';
 import { GaugeState } from '../gaugeState';
@@ -31,6 +31,10 @@ const describe = (config: DebugConfiguration): string => {
 export class RunConfigurationSelector extends Disposable {
     private readonly statusBarItem: StatusBarItem;
     private readonly _disposables: Disposable[] = [];
+    private readonly _onDidChange = new EventEmitter<void>();
+
+    /** Fires when the chosen configuration or launch.json changed. */
+    public readonly onDidChange: Event<void> = this._onDidChange.event;
 
     constructor(private state: GaugeState) {
         super(() => this.dispose());
@@ -38,9 +42,12 @@ export class RunConfigurationSelector extends Disposable {
         this.statusBarItem.command = GaugeVSCodeCommands.SelectRunConfiguration;
         this._disposables.push(
             this.statusBarItem,
+            this._onDidChange,
             commands.registerCommand(GaugeVSCodeCommands.SelectRunConfiguration, () => this.select()),
             workspace.onDidChangeConfiguration((e) => {
-                if (e.affectsConfiguration('launch')) this.refresh();
+                if (!e.affectsConfiguration('launch')) return;
+                this.refresh();
+                this._onDidChange.fire();
             }),
             workspace.onDidChangeWorkspaceFolders(() => this.refresh()),
             window.onDidChangeActiveTextEditor(() => this.refresh())
@@ -52,6 +59,12 @@ export class RunConfigurationSelector extends Disposable {
     public getSelectedName(folder: WorkspaceFolder | undefined): string | undefined {
         if (!folder) return undefined;
         return this.state.getSelectedRunConfiguration(folder.uri.toString());
+    }
+
+    /** The gauge:test configuration runs of this folder use: the chosen one, else the first. */
+    public getActiveConfiguration(folder: WorkspaceFolder | undefined): DebugConfiguration | undefined {
+        if (!folder) return undefined;
+        return selectGaugeRunConfiguration(launchConfigurations(folder), this.getSelectedName(folder));
     }
 
     public dispose() {
@@ -87,6 +100,7 @@ export class RunConfigurationSelector extends Disposable {
         if (!choice) return;
         await this.state.setSelectedRunConfiguration(folder.uri.toString(), choice.configurationName);
         this.refresh();
+        this._onDidChange.fire();
     }
 
     private async pickFolder(): Promise<WorkspaceFolder | undefined> {

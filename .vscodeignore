@@ -28,3 +28,5 @@ bin/**
 .github/**
 README.md
 .idea/
+*.patch
+email-*.txt
