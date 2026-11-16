@@ -33,10 +33,25 @@ const excludeCommonLaunchAtrributes = (object: object): object =>
     Object.entries(object).filter(([key, _]) => !(commonLaunchAttributes.has(key)))
         .reduce((out, [k, v]) => { out[k] = v; return out; }, {});
 
-export const extractGaugeRunOption = (configs: DebugConfiguration[]): GaugeRunOption => {
-    if (!configs) return {};
-    const extracted = configs.find(c => c.type === 'gauge' && c.request === 'test') || {};
-    return excludeCommonLaunchAtrributes(extracted);
+export const isGaugeRunConfiguration = (config: DebugConfiguration): boolean =>
+    !!config && config.type === 'gauge' && config.request === 'test';
+
+export const getGaugeRunConfigurations = (configs: DebugConfiguration[]): DebugConfiguration[] =>
+    (configs || []).filter(isGaugeRunConfiguration);
+
+/**
+ * Picks the gauge:test launch configuration named `selectedName`.
+ * Falls back to the first gauge:test entry if no name is given or no entry with that name exists.
+ */
+export const selectGaugeRunConfiguration = (
+    configs: DebugConfiguration[], selectedName?: string
+): DebugConfiguration | undefined => {
+    const candidates = getGaugeRunConfigurations(configs);
+    return (selectedName && candidates.find(c => c.name === selectedName)) || candidates[0];
+}
+
+export const extractGaugeRunOption = (configs: DebugConfiguration[], selectedName?: string): GaugeRunOption => {
+    return excludeCommonLaunchAtrributes(selectGaugeRunConfiguration(configs, selectedName) || {});
 }
 
 type BuildRunArgs = (spec: string, option: GaugeRunOption) => string[]

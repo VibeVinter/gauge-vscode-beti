@@ -8,7 +8,7 @@
   "description": "Gauge support for VScode.",
   "author": "ThoughtWorks",
   "license": "MIT",
-  "version": "0.2.6",
+  "version": "0.2.7-beti.2",
   "publisher": "getgauge",
   "engines": {
     "vscode": "^1.82.0"
@@ -69,6 +69,11 @@
       {
         "command": "gauge.create.specification",
         "title": "Create New Specification",
+        "category": "Gauge"
+      },
+      {
+        "command": "gauge.execution.selectRunConfiguration",
+        "title": "Select Run Configuration (launch.json)",
         "category": "Gauge"
       },
       {

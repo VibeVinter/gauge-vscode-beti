@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { buildRunArgs, extractGaugeRunOption } from '../../src/execution/runArgs';
+import { buildRunArgs, extractGaugeRunOption, getGaugeRunConfigurations } from '../../src/execution/runArgs';
 
 suite('Gauge Run Args Tests', () => {
     suite('buildRunArgs.forGauge', () => {
@@ -137,6 +137,50 @@ suite('Gauge Run Args Tests', () => {
 
         test('should return empty object for null', () => {
             assert.deepStrictEqual(extractGaugeRunOption(null), {});
+        });
+
+        const selectableConfigs = [
+            { type: 'java', name: 'preprod', request: 'launch', env: ['fail'] },
+            { type: 'gauge', name: 'preprod', request: 'attach', env: ['fail'] },
+            { type: 'gauge', name: 'preprod', request: 'test', env: ['preprod'] },
+            { type: 'gauge', name: 'prod', request: 'test', env: ['prod'], tags: 'smoke' }
+        ];
+
+        test('should pick the gauge:test entry with the selected name', () => {
+            assert.deepStrictEqual(extractGaugeRunOption(selectableConfigs, 'prod'), { env: ['prod'], tags: 'smoke' });
+        });
+
+        test('should fall back to the first gauge:test entry when the selected name does not exist', () => {
+            assert.deepStrictEqual(extractGaugeRunOption(selectableConfigs, 'removed'), { env: ['preprod'] });
+        });
+
+        test('should fall back to the first gauge:test entry when no name is selected', () => {
+            assert.deepStrictEqual(extractGaugeRunOption(selectableConfigs, undefined), { env: ['preprod'] });
+        });
+
+        test('should not select a non gauge:test entry by name', () => {
+            const configs = [
+                { type: 'gauge', name: 'first', request: 'test', env: ['first'] },
+                { type: 'java', name: 'other', request: 'launch', env: ['fail'] }
+            ];
+            assert.deepStrictEqual(extractGaugeRunOption(configs, 'other'), { env: ['first'] });
+        });
+    });
+
+    suite('getGaugeRunConfigurations', () => {
+        const selectableConfigsForList = [
+            { type: 'java', name: 'x', request: 'launch' },
+            { type: 'gauge', name: 'b', request: 'test' },
+            { type: 'gauge', name: 'y', request: 'attach' },
+            { type: 'gauge', name: 'a', request: 'test' }
+        ];
+
+        test('should only return gauge:test entries in launch.json order', () => {
+            assert.deepStrictEqual(getGaugeRunConfigurations(selectableConfigsForList).map(c => c.name), ['b', 'a']);
+        });
+
+        test('should return empty array for null', () => {
+            assert.deepStrictEqual(getGaugeRunConfigurations(null), []);
         });
     });
 });
