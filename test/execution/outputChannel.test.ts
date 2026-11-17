@@ -26,6 +26,16 @@ suite('Output Channel', () => {
         }
     }
 
+    test('should remove ANSI color codes, also when split across chunks', (done) => {
+        let chan = new MockVSOutputChannel();
+        let outputChannel = new OutputChannel(chan, "", "project");
+        outputChannel.appendOutBuf("\x1b[0;32m \u2714\x1b[0m\x1b[0;3");
+        outputChannel.appendOutBuf("2m \u2714\x1b[0m done\n");
+
+        assert.equal(chan.read(), " \u2714 \u2714 done");
+        done();
+    });
+
     test('should convert specification path from relative to absolute', (done) => {
         let chan = new MockVSOutputChannel();
         let outputChannel = new OutputChannel(chan, "", "project");

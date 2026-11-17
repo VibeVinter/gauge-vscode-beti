@@ -3,7 +3,7 @@
 import { platform } from 'os';
 import * as path from 'path';
 import {
-    CancellationTokenSource, commands, Disposable, OutputChannel, Uri,
+    CancellationTokenSource, commands, Disposable, OutputChannel, ProgressLocation, Uri,
     window, workspace, WorkspaceConfiguration, WorkspaceFoldersChangeEvent
 } from "vscode";
 import { DynamicFeature, LanguageClient, LanguageClientOptions, RevealOutputChannelOn, ServerOptions } from "vscode-languageclient/node";
@@ -34,7 +34,8 @@ export class GaugeWorkspace extends Disposable {
     private _executor: GaugeExecutor;
     private _runConfigurationSelector: RunConfigurationSelector;
     private _languageServerDataDirs: Map<string, string | undefined> = new Map();
-    private _dataDirReloadPrompted = false;
+    private _projectEnvs: Map<string, NodeJS.ProcessEnv> = new Map();
+    private _languageServerRestart: Promise<void> = Promise.resolve();
     private _clientsMap: GaugeProjectClientMap;
     private _clientLanguageMap: Map<string, string> = new Map();
     private _outputChannel: OutputChannel = window.createOutputChannel('gauge');
@@ -92,22 +93,48 @@ export class GaugeWorkspace extends Disposable {
     }
 
     private onRunConfigurationChange() {
-        if (this._dataDirReloadPrompted) return;
-        for (const [root, started] of this._languageServerDataDirs) {
+        // Serialize restarts, so quick successive changes cannot overlap.
+        this._languageServerRestart = this._languageServerRestart
+            .then(() => this.restartLanguageServersWithChangedDataDir())
+            .catch((e) => this._outputChannel.appendLine(`Restarting the language server failed: ${e?.message || e}`));
+    }
+
+    /**
+     * Restarts the language server of every project whose gauge_data_dir changed with the selected
+     * run configuration. The server reads the variable only on start, so it has to be restarted.
+     */
+    private async restartLanguageServersWithChangedDataDir(): Promise<void> {
+        let restarted = false;
+        for (const [root, started] of Array.from(this._languageServerDataDirs)) {
             if (!this._clientsMap.has(root)) continue;
             const wanted = this.languageServerDataDir(root);
             if (wanted === started) continue;
-            this._dataDirReloadPrompted = true;
-            const action = 'Reload Window';
-            window.showInformationMessage(
-                `The selected Gauge run configuration uses ${GAUGE_DATA_DIR} '${wanted || 'from env/default'}'. ` +
-                'Reload the window so CodeLens and diagnostics use it?', action
-            ).then((selection) => {
-                this._dataDirReloadPrompted = false;
-                if (selection === action) commands.executeCommand('workbench.action.reloadWindow');
+            await window.withProgress({
+                location: ProgressLocation.Window,
+                title: `Gauge: restarting language server (${GAUGE_DATA_DIR}=${wanted || 'from env/default'})`
+            }, async () => {
+                const client = this._clientsMap.get(root).client;
+                this._clientsMap.delete(root);
+                try {
+                    await client.stop();
+                } catch (e) {
+                    this._outputChannel.appendLine(`Stopping the language server failed: ${e?.message || e}`);
+                }
+                await this.startServerFor(root);
             });
-            return;
+            restarted = true;
         }
+        if (restarted) this._specNodeProvider.changeClient(this.getDefaultFolder());
+    }
+
+    /** Project env (e.g. the Maven classpath) is computed once per project, not again on every restart. */
+    private projectEnvs(project: GaugeProject): NodeJS.ProcessEnv {
+        if (!this._projectEnvs.has(project.root())) {
+            const envs = project.envs(this.cli);
+            if (!envs) return {};
+            this._projectEnvs.set(project.root(), envs);
+        }
+        return this._projectEnvs.get(project.root());
     }
 
     private onEditorChange(): Disposable {
@@ -180,6 +207,7 @@ export class GaugeWorkspace extends Disposable {
             if (!this._clientsMap.has(folder.uri.fsPath)) return;
             let client = this._clientsMap.get(folder.uri.fsPath).client;
             this._clientsMap.delete(folder.uri.fsPath);
+            this._projectEnvs.delete(folder.uri.fsPath);
             client.stop();
         }
         this._specNodeProvider.changeClient(this.getDefaultFolder());
@@ -195,7 +223,7 @@ export class GaugeWorkspace extends Disposable {
             command: cmd.command,
             args: cmd.argsForSpawnType(["daemon", "--lsp", "--dir", project.root()]),
             options: {
-                env: { ...process.env, ...project.envs(this.cli) },
+                env: { ...process.env, ...this.projectEnvs(project) },
                 ...cmd.defaultSpawnOptions,
             },
         };
