@@ -2,6 +2,7 @@
 
 import * as vscode from 'vscode';
 import { LineBuffer } from './lineBuffer';
+import { stripAnsi } from './ansi';
 import * as cp from 'child_process';
 import * as path from 'path';
 
@@ -24,10 +25,11 @@ export class OutputChannel {
 
     private setup() {
         this.chan.show(true);
-        this.outBuf.onLine((line) => this.chan.appendLine(line));
-        this.outBuf.onDone((last) => last && this.chan.appendLine(last));
-        this.errBuf.onLine((line) => this.chan.appendLine(line));
-        this.errBuf.onDone((last) => last && this.chan.appendLine(last));
+        // Output channels cannot render ANSI colors (e.g. without --simple-console), so drop them per line.
+        this.outBuf.onLine((line) => this.chan.appendLine(stripAnsi(line)));
+        this.outBuf.onDone((last) => last && this.chan.appendLine(stripAnsi(last)));
+        this.errBuf.onLine((line) => this.chan.appendLine(stripAnsi(line)));
+        this.errBuf.onDone((last) => last && this.chan.appendLine(stripAnsi(last)));
     }
 
     public appendOutBuf(line: string) {
