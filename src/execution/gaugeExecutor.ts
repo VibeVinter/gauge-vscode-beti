@@ -197,7 +197,7 @@ export class GaugeExecutor extends Disposable {
 
     private getArgs(spec: string, config: ExecutionConfig): Array<string> {
         const project = config.getProject();
-        const workspaceFolder = workspace.getWorkspaceFolder(Uri.parse(project.root()));
+        const workspaceFolder = workspace.getWorkspaceFolder(Uri.file(project.root()));
         const launchConfigs = workspace.getConfiguration('launch', workspaceFolder).get<DebugConfiguration[]>('configurations');
         const option = {
             ...extractGaugeRunOption(launchConfigs,
